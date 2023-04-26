@@ -37,66 +37,17 @@ namespace WebApiTestApp.Controllers
                                               .Get<RecipesApiConfig>();
 
             _translator = new Translator(_deeplConfig.AuthKey);
-
         }
-
-
-        [HttpGet]
-        [Route("RuEnTranslate/{text}")]
-        public async Task<ActionResult> RuToEnText(string text)
-        {
-            var translatedText = await _translator.TranslateTextAsync(
-                                                    text,
-                                                    "ru",
-                                                    "en");
-            return Content(translatedText.Text);
-        }
-
-
-        [HttpGet]
-        [ActionName("EnRu")]
-        [Route("EnRuTranslate/{text}")]
-        public async Task<ActionResult> EnToRuText(string text)
-        {
-            var translatedText = await _translator.TranslateTextAsync(
-                                                    text,
-                                                    "en",
-                                                    "ru");
-            return Content(translatedText.Text);
-        }
-
-        private async Task<CookingInfo> Translate(CookingInfo cookInfo)
-        {
-            var ruCookInfo = new CookingInfo();
-            ruCookInfo.instructions = await TranslateString(cookInfo.instructions);
-
-            var ingredients = new List<Ingredient>();
-            foreach (var ingr in cookInfo.extendedIngredients)
-            {
-                var translatedIngr = await TranslateString(ingr.original);
-                var ruIngr = new Ingredient(translatedIngr);
-                ingredients.Add(ruIngr);
-            }
-            ruCookInfo.extendedIngredients = ingredients;
-
-            return ruCookInfo;
-        }
-
-        private async Task<string> TranslateString(string text)
-        {
-            var translatedText = await _translator.TranslateTextAsync(
-                                        text,
-                                        "en",
-                                        "ru");
-
-            return translatedText.Text;
-        }
-
 
         [HttpGet]
         [Route("GetRecipes/{ingridients}")]
-        public async Task<IActionResult> GetJsonRecipes(string ingridients)
+        public async Task<IActionResult> GetJsonRecipes(string ingridients, string inputLang = "en")   //sourcelang будет приходить из view
         {
+            if (inputLang != "en")
+            {
+                ingridients = await TranslateText(ingridients, inputLang, "en");
+            }
+
             var url = _recipesApiConfig.Url
                             .AppendPathSegments("recipes", "findByIngredients")
                             .SetQueryParam("ingredients", new[] { ingridients })
@@ -106,7 +57,6 @@ namespace WebApiTestApp.Controllers
             var request = new RestRequest(url, Method.Get)
                                 .AddHeader(_recipesApiConfig.ApiKeyName, _recipesApiConfig.ApiKeyValue)
                                 .AddHeader(_recipesApiConfig.HostName, _recipesApiConfig.HostValue);
-
 
             var response = await client.GetAsync(request);
 
@@ -129,17 +79,40 @@ namespace WebApiTestApp.Controllers
                                 .AddHeader(_recipesApiConfig.ApiKeyName, _recipesApiConfig.ApiKeyValue)
                                 .AddHeader(_recipesApiConfig.HostName, _recipesApiConfig.HostValue);
 
-
             var response = await client.GetAsync(request);
 
             var cookInfo = JsonSerializer.Deserialize<CookingInfo>(response.Content);
-            var ruCook = await Translate(cookInfo);
+            var ruCook = await TranslateCookingInfo(cookInfo);
 
             return Ok(ruCook);
         }
 
+        private async Task<string> TranslateText(string text,
+            string sourceLang = "en", string targetLang = "ru")
+        {
+            var translatedText = await _translator.TranslateTextAsync(
+                                                    text,
+                                                    sourceLang,
+                                                    targetLang);
+            return translatedText.Text;
+        }
 
+        private async Task<CookingInfo> TranslateCookingInfo(CookingInfo cookInfo)
+        {
+            var ruCookInfo = new CookingInfo();
+            ruCookInfo.instructions = await TranslateText(cookInfo.instructions);
 
+            var ingredients = new List<Ingredient>();
+            foreach (var ingr in cookInfo.extendedIngredients)
+            {
+                var translatedIngr = await TranslateText(cookInfo.instructions);
+                var ruIngr = new Ingredient(translatedIngr);
+                ingredients.Add(ruIngr);
+            }
+            ruCookInfo.extendedIngredients = ingredients;
+
+            return ruCookInfo;
+        }
 
     }
 }
